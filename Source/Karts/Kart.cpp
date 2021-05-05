@@ -17,9 +17,9 @@ AKart::AKart()
 	BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
 	BoxCollision->SetBoxExtent(FVector(220.0f,90.0f,40.0f));
 	RootComponent = BoxCollision;
-	KarMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("KartMesh"));
-	//KarMesh->SetLocation(FVector(0.0f,0.0f,-40.0f));
-	KarMesh->SetupAttachment(BoxCollision);
+	KartMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("KartMesh"));
+	KartMesh->SetRelativeLocation(FVector(0.0f, 0.0f, -40.0f));
+	KartMesh->SetupAttachment(BoxCollision);
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(BoxCollision);
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
@@ -79,7 +79,6 @@ void AKart::CalculateRotation(float DeltaTime)
 	AddActorWorldRotation(RotationDelta);
 }
 
-
 FVector AKart::GetAirResistance()
 {
 	return -Velocity.GetSafeNormal() * Velocity.SizeSquared() * DragCoefficient;
@@ -98,19 +97,32 @@ void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	check(PlayerInputComponent);
 
-	PlayerInputComponent->BindAxis("MoveForward", this, &AKart::MoveForward);
-	PlayerInputComponent->BindAxis("MoveRight", this, &AKart::MoveRight);
+	PlayerInputComponent->BindAxis("MoveForward", this, &AKart::Server_MoveForward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &AKart::Server_MoveRight);
 // 	PlayerInputComponent->BindAxis("LookUp");
 // 	PlayerInputComponent->BindAxis("LookRight");
 }
 
-void AKart::MoveForward(float Val)
+// NETWORK
+
+void AKart::Server_MoveForward_Implementation(float Val)
 {
-	Throttle = 100 * Val;
+	Throttle = Val;
 }
 
-void AKart::MoveRight(float Val)
+bool AKart::Server_MoveForward_Validate(float Val)
+{
+	return FMath::Abs(Val) <=1;
+}
+
+
+
+void AKart::Server_MoveRight_Implementation(float Val)
 {
 	SteeringThrow = Val;
 }
 
+bool AKart::Server_MoveRight_Validate(float Val)
+{
+	return FMath::Abs(Val) <=1;
+}

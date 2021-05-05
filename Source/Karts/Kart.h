@@ -26,7 +26,7 @@ protected:
 	UPROPERTY(EditAnywhere)
 		class UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
-		class USkeletalMeshComponent* KarMesh;
+		class USkeletalMeshComponent* KartMesh;
 	// Minimum turning radius -- 10 metros.
 	UPROPERTY(EditAnywhere)
 		float MinTurningRadius = 10.0f;
@@ -59,7 +59,8 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-	void MoveForward(float Val);
-	void MoveRight(float Val);
+	UFUNCTION(Server,Reliable,WithValidation)
+	void Server_MoveForward(float Val);
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_MoveRight(float Val);
 };

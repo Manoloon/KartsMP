@@ -44,7 +44,7 @@ private:
 	// 0.3f - 0.5f is generally good to use. 
 	//0.3f - Tanks, 0.5f - Automobiles
 	float DragCoefficient = 0.5f;
-	float RollingResistanceCoefficient = 0.0350f;
+	float RollingResistanceCoefficient = 0.015f;
 	//The DragArea that is (cm^2). Higher means more drag
 	float DragArea = 20000.0f;
 
@@ -59,6 +59,10 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	void MoveForward(float Val);
+	void MoveRight(float Val);
+
+	// network
 	UFUNCTION(Server,Reliable,WithValidation)
 	void Server_MoveForward(float Val);
 	UFUNCTION(Server, Reliable, WithValidation)

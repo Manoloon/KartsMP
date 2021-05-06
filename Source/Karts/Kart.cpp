@@ -6,6 +6,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/World.h"
 #include "Math/UnrealMathUtility.h"
+#include "DrawDebugHelpers.h"
 #include "Camera/CameraComponent.h"
 
 // Sets default values
@@ -34,6 +35,23 @@ void AKart::BeginPlay()
 	Super::BeginPlay();	
 }
 
+FString GetRoleName(ENetRole newRole)
+{
+	switch (newRole)
+	{
+	case ROLE_None:
+		return ("NONE");
+	case ROLE_SimulatedProxy:
+		return("SimulatedProxy");
+	case ROLE_AutonomousProxy:
+		return("AutonomousProxy");
+	case ROLE_Authority:
+		return("Authority");
+	default:
+		return("ERROR");
+	}
+}
+
 // Called every frame
 void AKart::Tick(float DeltaTime)
 {
@@ -46,15 +64,15 @@ void AKart::Tick(float DeltaTime)
 	// Accelaration = DeltaVelocity / DeltaTime
 	FVector Accelaration = Force / Mass;	
 	// Velocity = DeltaLocation / DeltaTime
-	Velocity = Velocity + (Accelaration * DeltaTime);
-
+	Velocity = Velocity + Accelaration * DeltaTime;
 	CalculateRotation(DeltaTime);
 	CalculateTranslation(DeltaTime);
+	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
 }
 
 void AKart::CalculateTranslation(float DeltaTime)
 {
-	FVector Translation = Velocity * DeltaTime;
+	FVector Translation = Velocity * 100 * DeltaTime;
 	
 	FHitResult BlockResult;
 	AddActorWorldOffset(Translation, true,&BlockResult);
@@ -68,13 +86,13 @@ void AKart::CalculateTranslation(float DeltaTime)
 void AKart::CalculateRotation(float DeltaTime)
 {
 	float DeltaLocation = FVector::DotProduct(GetActorForwardVector(), Velocity) * DeltaTime;
-	if(Velocity.Size() > 25)
-	{
-		MinTurningRadius = FMath::FInterpTo(10, 100, DeltaTime, 1.0f);
-	}
+ 	if(Velocity.Size() > 25)
+ 	{
+ 		MinTurningRadius = FMath::FInterpTo(10, 100, DeltaTime, 1.0f);
+ 	}
 	
 	float RotationAngle = DeltaLocation / MinTurningRadius * SteeringThrow;
-	FQuat RotationDelta(GetActorUpVector(), FMath::DegreesToRadians(RotationAngle));
+	FQuat RotationDelta(GetActorUpVector(),RotationAngle);
 	Velocity = RotationDelta.RotateVector(Velocity);
 	AddActorWorldRotation(RotationDelta);
 }
@@ -96,11 +114,22 @@ void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	check(PlayerInputComponent);
+		PlayerInputComponent->BindAxis("MoveForward", this, &AKart::MoveForward);
+		PlayerInputComponent->BindAxis("MoveRight", this, &AKart::MoveRight);
+		// 	PlayerInputComponent->BindAxis("LookUp");
+		// 	PlayerInputComponent->BindAxis("LookRight");
+}
 
-	PlayerInputComponent->BindAxis("MoveForward", this, &AKart::Server_MoveForward);
-	PlayerInputComponent->BindAxis("MoveRight", this, &AKart::Server_MoveRight);
-// 	PlayerInputComponent->BindAxis("LookUp");
-// 	PlayerInputComponent->BindAxis("LookRight");
+void AKart::MoveForward(float Val)
+{
+	Throttle = Val;
+	Server_MoveForward(Val);
+}
+
+void AKart::MoveRight(float Val)
+{
+	SteeringThrow = Val;
+	Server_MoveRight(Val);
 }
 
 // NETWORK

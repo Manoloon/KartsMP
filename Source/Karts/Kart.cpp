@@ -8,6 +8,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "DrawDebugHelpers.h"
 #include "Camera/CameraComponent.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 AKart::AKart()
@@ -26,7 +27,25 @@ AKart::AKart()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
 	
+	bReplicates = true;
+}
 
+void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AKart, Rep_PawnLocation);
+	DOREPLIFETIME(AKart, Rep_PawnRotation);
+}
+
+// Called to bind functionality to input
+void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	check(PlayerInputComponent);
+	PlayerInputComponent->BindAxis("MoveForward", this, &AKart::MoveForward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &AKart::MoveRight);
+	// 	PlayerInputComponent->BindAxis("LookUp");
+	// 	PlayerInputComponent->BindAxis("LookRight");
 }
 
 // Called when the game starts or when spawned
@@ -57,7 +76,6 @@ void AKart::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-
 	FVector Force =( GetActorForwardVector() * MaxDrivingForce * Throttle);
 	Force += GetAirResistance();
 	Force += GetRollingResistance();
@@ -68,6 +86,16 @@ void AKart::Tick(float DeltaTime)
 	CalculateRotation(DeltaTime);
 	CalculateTranslation(DeltaTime);
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
+	if(HasAuthority())
+	{
+		Rep_PawnLocation = GetActorLocation();
+		Rep_PawnRotation = GetActorRotation();
+	}
+	else
+	{
+		SetActorLocation (Rep_PawnLocation);
+		SetActorRotation(Rep_PawnRotation);
+	}
 }
 
 void AKart::CalculateTranslation(float DeltaTime)
@@ -109,16 +137,7 @@ FVector AKart::GetRollingResistance()
 	return -Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
 }
 
-// Called to bind functionality to input
-void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-	check(PlayerInputComponent);
-		PlayerInputComponent->BindAxis("MoveForward", this, &AKart::MoveForward);
-		PlayerInputComponent->BindAxis("MoveRight", this, &AKart::MoveRight);
-		// 	PlayerInputComponent->BindAxis("LookUp");
-		// 	PlayerInputComponent->BindAxis("LookRight");
-}
+
 
 void AKart::MoveForward(float Val)
 {

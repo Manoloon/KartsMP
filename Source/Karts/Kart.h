@@ -53,6 +53,12 @@ private:
 	FVector GetAirResistance();
 	FVector GetRollingResistance();
 
+	// network stuff
+	UPROPERTY(Replicated)
+		FVector Rep_PawnLocation;
+	UPROPERTY(Replicated)
+		FRotator Rep_PawnRotation;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;

@@ -33,8 +33,10 @@ AKart::AKart()
 void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AKart, Rep_PawnLocation);
-	DOREPLIFETIME(AKart, Rep_PawnRotation);
+	DOREPLIFETIME(AKart, ReplicatePawnTransform);
+	DOREPLIFETIME(AKart, Velocity);
+	DOREPLIFETIME(AKart, SteeringThrow);
+	DOREPLIFETIME(AKart, Throttle);
 }
 
 // Called to bind functionality to input
@@ -52,6 +54,7 @@ void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 void AKart::BeginPlay()
 {
 	Super::BeginPlay();	
+	NetUpdateFrequency = 1;
 }
 
 FString GetRoleName(ENetRole newRole)
@@ -80,22 +83,21 @@ void AKart::Tick(float DeltaTime)
 	Force += GetAirResistance();
 	Force += GetRollingResistance();
 	// Accelaration = DeltaVelocity / DeltaTime
-	FVector Accelaration = Force / Mass;	
+	FVector Accelaration = Force / Mass;
 	// Velocity = DeltaLocation / DeltaTime
 	Velocity = Velocity + Accelaration * DeltaTime;
 	CalculateRotation(DeltaTime);
 	CalculateTranslation(DeltaTime);
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
-	if(HasAuthority())
-	{
-		Rep_PawnLocation = GetActorLocation();
-		Rep_PawnRotation = GetActorRotation();
-	}
-	else
-	{
-		SetActorLocation (Rep_PawnLocation);
-		SetActorRotation(Rep_PawnRotation);
-	}
+ 	if(HasAuthority())
+ 	{
+ 		ReplicatePawnTransform = GetActorTransform();
+ 	}
+}
+
+void AKart::OnRep_PawnTransform()
+{
+	SetActorTransform(ReplicatePawnTransform);
 }
 
 void AKart::CalculateTranslation(float DeltaTime)
@@ -136,7 +138,6 @@ FVector AKart::GetRollingResistance()
 	float NormalForce = Mass / Gravity;
 	return -Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
 }
-
 
 
 void AKart::MoveForward(float Val)

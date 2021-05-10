@@ -6,6 +6,31 @@
 #include "GameFramework/Pawn.h"
 #include "Kart.generated.h"
 
+USTRUCT()
+struct FKartMove
+{
+	GENERATED_USTRUCT_BODY()
+	UPROPERTY()
+		float Throttle;
+	UPROPERTY()
+		float SteeringThrow;
+	UPROPERTY()
+		float DeltaTime;
+	UPROPERTY()
+		float Time;
+};
+USTRUCT()
+struct FKartState
+{
+	GENERATED_USTRUCT_BODY()
+	UPROPERTY()
+		FVector Velocity;
+	UPROPERTY()
+		FTransform Transform;
+	UPROPERTY()
+		FKartMove LastMove;
+};
+
 UCLASS()
 class KARTS_API AKart : public APawn
 {
@@ -34,12 +59,14 @@ protected:
 private:
 
 	uint32 Mass = 1000;
-	FVector Velocity;
-	float Throttle;
+	UPROPERTY(Replicated)
+		FVector Velocity;
+	UPROPERTY(Replicated)
+		float Throttle;
 	// 10000 / 1000 = 10 metros por segundo.
 	uint32 MaxDrivingForce = 10000; 
-	
-	float SteeringThrow;
+	UPROPERTY(Replicated)
+		float SteeringThrow;
 	//DragCoefficient is indeed unitless! 
 	// 0.3f - 0.5f is generally good to use. 
 	//0.3f - Tanks, 0.5f - Automobiles
@@ -54,10 +81,12 @@ private:
 	FVector GetRollingResistance();
 
 	// network stuff
-	UPROPERTY(Replicated)
-		FVector Rep_PawnLocation;
-	UPROPERTY(Replicated)
-		FRotator Rep_PawnRotation;
+	UPROPERTY(ReplicatedUsing = OnRep_PawnTransform)
+		FTransform ReplicatePawnTransform;
+	
+
+	UFUNCTION()
+		void OnRep_PawnTransform();
 
 public:	
 	// Called every frame

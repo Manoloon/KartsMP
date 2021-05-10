@@ -33,10 +33,7 @@ AKart::AKart()
 void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AKart, ReplicatePawnTransform);
 	DOREPLIFETIME(AKart, Velocity);
-	DOREPLIFETIME(AKart, SteeringThrow);
-	DOREPLIFETIME(AKart, Throttle);
 }
 
 // Called to bind functionality to input
@@ -48,6 +45,16 @@ void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	PlayerInputComponent->BindAxis("MoveRight", this, &AKart::MoveRight);
 	// 	PlayerInputComponent->BindAxis("LookUp");
 	// 	PlayerInputComponent->BindAxis("LookRight");
+}
+
+void AKart::MoveForward(float Val)
+{
+	Throttle = Val;
+}
+
+void AKart::MoveRight(float Val)
+{
+	SteeringThrow = Val;
 }
 
 // Called when the game starts or when spawned
@@ -79,25 +86,24 @@ void AKart::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	FVector Force =( GetActorForwardVector() * MaxDrivingForce * Throttle);
-	Force += GetAirResistance();
-	Force += GetRollingResistance();
-	// Accelaration = DeltaVelocity / DeltaTime
-	FVector Accelaration = Force / Mass;
-	// Velocity = DeltaLocation / DeltaTime
-	Velocity = Velocity + Accelaration * DeltaTime;
-	CalculateRotation(DeltaTime);
-	CalculateTranslation(DeltaTime);
+	if(IsLocallyControlled())
+	{
+		FKartMove KartMove;
+		KartMove.DeltaTime = DeltaTime;
+		KartMove.Throttle = Throttle;
+		KartMove.SteeringThrow = SteeringThrow;
+		// TODO Falta TIme
+		Server_SendKartMove(KartMove);
+		SimulateMove(KartMove);
+	}
+	
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
- 	if(HasAuthority())
- 	{
- 		ReplicatePawnTransform = GetActorTransform();
- 	}
 }
 
-void AKart::OnRep_PawnTransform()
+void AKart::OnRep_ServerState()
 {
-	SetActorTransform(ReplicatePawnTransform);
+	SetActorTransform(ServerState.Transform);
+	Velocity = ServerState.Velocity;
 }
 
 void AKart::CalculateTranslation(float DeltaTime)
@@ -113,7 +119,7 @@ void AKart::CalculateTranslation(float DeltaTime)
 	}
 }
 
-void AKart::CalculateRotation(float DeltaTime)
+void AKart::CalculateRotation(float DeltaTime,float newSteeringThrow)
 {
 	float DeltaLocation = FVector::DotProduct(GetActorForwardVector(), Velocity) * DeltaTime;
  	if(Velocity.Size() > 25)
@@ -121,10 +127,23 @@ void AKart::CalculateRotation(float DeltaTime)
  		MinTurningRadius = FMath::FInterpTo(10, 100, DeltaTime, 1.0f);
  	}
 	
-	float RotationAngle = DeltaLocation / MinTurningRadius * SteeringThrow;
+	float RotationAngle = DeltaLocation / MinTurningRadius * newSteeringThrow;
 	FQuat RotationDelta(GetActorUpVector(),RotationAngle);
 	Velocity = RotationDelta.RotateVector(Velocity);
 	AddActorWorldRotation(RotationDelta);
+}
+
+void AKart::SimulateMove(FKartMove newMove)
+{
+	FVector Force = (GetActorForwardVector() * MaxDrivingForce * newMove.Throttle);
+	Force += GetAirResistance();
+	Force += GetRollingResistance();
+	// Accelaration = DeltaVelocity / DeltaTime
+	FVector Accelaration = Force / Mass;
+	// Velocity = DeltaLocation / DeltaTime
+	Velocity = Velocity + Accelaration * newMove.DeltaTime;
+	CalculateRotation(newMove.DeltaTime,newMove.SteeringThrow);
+	CalculateTranslation(newMove.DeltaTime);
 }
 
 FVector AKart::GetAirResistance()
@@ -139,39 +158,18 @@ FVector AKart::GetRollingResistance()
 	return -Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
 }
 
+// RPC
 
-void AKart::MoveForward(float Val)
+void AKart::Server_SendKartMove_Implementation(FKartMove newMove)
 {
-	Throttle = Val;
-	Server_MoveForward(Val);
+	SimulateMove(newMove);
+	ServerState.LastMove = newMove;
+	ServerState.Transform = GetActorTransform();
+	ServerState.Velocity = Velocity;
+	// TODO falta LastMove
 }
 
-void AKart::MoveRight(float Val)
+bool AKart::Server_SendKartMove_Validate(FKartMove newMove)
 {
-	SteeringThrow = Val;
-	Server_MoveRight(Val);
-}
-
-// NETWORK
-
-void AKart::Server_MoveForward_Implementation(float Val)
-{
-	Throttle = Val;
-}
-
-bool AKart::Server_MoveForward_Validate(float Val)
-{
-	return FMath::Abs(Val) <=1;
-}
-
-
-
-void AKart::Server_MoveRight_Implementation(float Val)
-{
-	SteeringThrow = Val;
-}
-
-bool AKart::Server_MoveRight_Validate(float Val)
-{
-	return FMath::Abs(Val) <=1;
+	return true;
 }

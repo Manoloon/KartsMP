@@ -10,17 +10,17 @@ USTRUCT()
 struct FKartMove
 {
 	GENERATED_USTRUCT_BODY()
-	UPROPERTY()
-		float Throttle;
-	UPROPERTY()
-		float SteeringThrow;
+ 	UPROPERTY()
+ 		float Throttle;
+ 	UPROPERTY()
+ 		float SteeringThrow;
 	UPROPERTY()
 		float DeltaTime;
 	UPROPERTY()
 		float Time;
 };
 USTRUCT()
-struct FKartState
+struct FServerState
 {
 	GENERATED_USTRUCT_BODY()
 	UPROPERTY()
@@ -61,12 +61,11 @@ private:
 	uint32 Mass = 1000;
 	UPROPERTY(Replicated)
 		FVector Velocity;
-	UPROPERTY(Replicated)
-		float Throttle;
+ 	
+ 	float Throttle;
 	// 10000 / 1000 = 10 metros por segundo.
 	uint32 MaxDrivingForce = 10000; 
-	UPROPERTY(Replicated)
-		float SteeringThrow;
+	float SteeringThrow;
 	//DragCoefficient is indeed unitless! 
 	// 0.3f - 0.5f is generally good to use. 
 	//0.3f - Tanks, 0.5f - Automobiles
@@ -76,17 +75,19 @@ private:
 	float DragArea = 20000.0f;
 
 	void CalculateTranslation(float DeltaTime);
-	void CalculateRotation(float DeltaTime);
+	void CalculateRotation(float DeltaTime, float newSteeringThrow);
+
+	void SimulateMove(FKartMove newMove);
 	FVector GetAirResistance();
 	FVector GetRollingResistance();
 
-	// network stuff
-	UPROPERTY(ReplicatedUsing = OnRep_PawnTransform)
-		FTransform ReplicatePawnTransform;
-	
+	// network stuff	
+
+	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
+		FServerState ServerState;
 
 	UFUNCTION()
-		void OnRep_PawnTransform();
+		void OnRep_ServerState();
 
 public:	
 	// Called every frame
@@ -97,9 +98,7 @@ public:
 	void MoveForward(float Val);
 	void MoveRight(float Val);
 
-	// network
-	UFUNCTION(Server,Reliable,WithValidation)
-	void Server_MoveForward(float Val);
+	// network RPC
 	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_MoveRight(float Val);
+		void Server_SendKartMove(FKartMove newMove);
 };

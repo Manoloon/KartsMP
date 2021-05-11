@@ -34,7 +34,7 @@ AKart::AKart()
 void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AKart, Velocity);
+	//DOREPLIFETIME(AKart, Velocity);
 	DOREPLIFETIME(AKart, ServerState);
 }
 
@@ -63,7 +63,11 @@ void AKart::MoveRight(float Val)
 void AKart::BeginPlay()
 {
 	Super::BeginPlay();	
-	NetUpdateFrequency = 3;
+
+	if (HasAuthority())
+	{
+		NetUpdateFrequency = 1;
+	}
 }
 
 FString GetRoleName(ENetRole newRole)
@@ -90,9 +94,10 @@ void AKart::Tick(float DeltaTime)
 	if(GetLocalRole() == ROLE_AutonomousProxy)
 	{
 		FKartMove newMove = CreateMoveAction(DeltaTime);
+		SimulateMove(newMove);
 		UnacknowledgeMoves.Add(newMove);
 		UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), UnacknowledgeMoves.Num());
-		SimulateMove(newMove);
+		
 		Server_SendKartMove(newMove);
 	}
 	// WE ARE THE SERVER AND IN CONTROL OF THE PAWN
@@ -120,6 +125,7 @@ void AKart::OnRep_ServerState()
 	}
 }
 
+// move to move component. 
 void AKart::CalculateTranslation(float DeltaTime)
 {
 	FVector Translation = Velocity * 100 * DeltaTime;
@@ -133,6 +139,8 @@ void AKart::CalculateTranslation(float DeltaTime)
 	}
 }
 
+// move to move component. 
+// component : in float steering Val, float throttle val. apawn owner 
 void AKart::CalculateRotation(float DeltaTime,float newSteeringThrow)
 {
 	float DeltaLocation = FVector::DotProduct(GetActorForwardVector(), Velocity) * DeltaTime;
@@ -168,9 +176,9 @@ void AKart::ClearMoveAction(FKartMove LastMove)
 		}
 	}
 	UnacknowledgeMoves = TempMoves;
-	//UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), TempMoves.Num());
 }
 
+// move to move component. 
 void AKart::SimulateMove(const FKartMove& newMove)
 {
 	FVector Force = (GetActorForwardVector() * MaxDrivingForce * newMove.Throttle);
@@ -183,12 +191,12 @@ void AKart::SimulateMove(const FKartMove& newMove)
 	CalculateRotation(newMove.DeltaTime,newMove.SteeringThrow);
 	CalculateTranslation(newMove.DeltaTime);
 }
-
+// move to move component. 
 FVector AKart::GetAirResistance()
 {
 	return -Velocity.GetSafeNormal() * Velocity.SizeSquared() * DragCoefficient;
 }
-
+// move to move component. 
 FVector AKart::GetRollingResistance()
 {
 	float Gravity = GetWorld()->GetDefaultGravityZ() / 100;

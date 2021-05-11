@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "Math/UnrealMathUtility.h"
 #include "DrawDebugHelpers.h"
+#include "GameFrameWork/GameState.h"
 #include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
 
@@ -34,6 +35,7 @@ void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeP
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AKart, Velocity);
+	DOREPLIFETIME(AKart, ServerState);
 }
 
 // Called to bind functionality to input
@@ -61,7 +63,7 @@ void AKart::MoveRight(float Val)
 void AKart::BeginPlay()
 {
 	Super::BeginPlay();	
-	NetUpdateFrequency = 1;
+	NetUpdateFrequency = 3;
 }
 
 FString GetRoleName(ENetRole newRole)
@@ -85,25 +87,37 @@ FString GetRoleName(ENetRole newRole)
 void AKart::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
+	if(GetLocalRole() == ROLE_AutonomousProxy)
+	{
+		FKartMove newMove = CreateMoveAction(DeltaTime);
+		UnacknowledgeMoves.Add(newMove);
+		UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), UnacknowledgeMoves.Num());
+		SimulateMove(newMove);
+		Server_SendKartMove(newMove);
+	}
+	// WE ARE THE SERVER AND IN CONTROL OF THE PAWN
 	if(IsLocallyControlled())
 	{
-		FKartMove KartMove;
-		KartMove.DeltaTime = DeltaTime;
-		KartMove.Throttle = Throttle;
-		KartMove.SteeringThrow = SteeringThrow;
-		// TODO Falta TIme
-		Server_SendKartMove(KartMove);
-		SimulateMove(KartMove);
+		FKartMove newMove = CreateMoveAction(DeltaTime);
+		Server_SendKartMove(newMove);
 	}
-	
+	if(GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		SimulateMove(ServerState.LastMove);
+	}
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
 }
+
 
 void AKart::OnRep_ServerState()
 {
 	SetActorTransform(ServerState.Transform);
 	Velocity = ServerState.Velocity;
+	ClearMoveAction(ServerState.LastMove);
+	for(const FKartMove& move : UnacknowledgeMoves)
+	{
+		SimulateMove(move);
+	}
 }
 
 void AKart::CalculateTranslation(float DeltaTime)
@@ -112,7 +126,7 @@ void AKart::CalculateTranslation(float DeltaTime)
 	
 	FHitResult BlockResult;
 	AddActorWorldOffset(Translation, true,&BlockResult);
-	//UE_LOG(LogTemp, Warning, TEXT("Log Velocity %f"), Translation.X);
+
 	if(BlockResult.bBlockingHit)
 	{
 		Velocity = FVector(0.0);
@@ -133,7 +147,31 @@ void AKart::CalculateRotation(float DeltaTime,float newSteeringThrow)
 	AddActorWorldRotation(RotationDelta);
 }
 
-void AKart::SimulateMove(FKartMove newMove)
+FKartMove AKart::CreateMoveAction(float DeltaTime)
+{
+	FKartMove KartMove;
+	KartMove.DeltaTime = DeltaTime;
+	KartMove.Throttle = Throttle;
+	KartMove.SteeringThrow = SteeringThrow;
+	KartMove.Time = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();	
+	return KartMove;
+}
+
+void AKart::ClearMoveAction(FKartMove LastMove)
+{
+	TArray<FKartMove> TempMoves;
+	for(const FKartMove& move : UnacknowledgeMoves)
+	{
+		if(move.Time > LastMove.Time)
+		{
+			TempMoves.Add(move);
+		}
+	}
+	UnacknowledgeMoves = TempMoves;
+	//UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), TempMoves.Num());
+}
+
+void AKart::SimulateMove(const FKartMove& newMove)
 {
 	FVector Force = (GetActorForwardVector() * MaxDrivingForce * newMove.Throttle);
 	Force += GetAirResistance();
@@ -166,7 +204,6 @@ void AKart::Server_SendKartMove_Implementation(FKartMove newMove)
 	ServerState.LastMove = newMove;
 	ServerState.Transform = GetActorTransform();
 	ServerState.Velocity = Velocity;
-	// TODO falta LastMove
 }
 
 bool AKart::Server_SendKartMove_Validate(FKartMove newMove)

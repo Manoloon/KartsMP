@@ -74,10 +74,15 @@ private:
 	//The DragArea that is (cm^2). Higher means more drag
 	float DragArea = 20000.0f;
 
+
+
 	void CalculateTranslation(float DeltaTime);
 	void CalculateRotation(float DeltaTime, float newSteeringThrow);
-
-	void SimulateMove(FKartMove newMove);
+	
+	TArray<FKartMove> UnacknowledgeMoves;
+	FKartMove CreateMoveAction(float DeltaTime);
+	void ClearMoveAction(FKartMove LastMove);
+	void SimulateMove(const FKartMove& newMove);
 	FVector GetAirResistance();
 	FVector GetRollingResistance();
 

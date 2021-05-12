@@ -4,21 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Public/KartMoveComponent.h"
 #include "Kart.generated.h"
 
-USTRUCT()
-struct FKartMove
-{
-	GENERATED_USTRUCT_BODY()
- 	UPROPERTY()
- 		float Throttle;
- 	UPROPERTY()
- 		float SteeringThrow;
-	UPROPERTY()
-		float DeltaTime;
-	UPROPERTY()
-		float Time;
-};
 USTRUCT()
 struct FServerState
 {
@@ -28,7 +16,7 @@ struct FServerState
 	UPROPERTY()
 		FTransform Transform;
 	UPROPERTY()
-		FKartMove LastMove;
+		FKartMovement LastMove;
 };
 
 UCLASS()
@@ -52,39 +40,10 @@ protected:
 		class UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
 		class USkeletalMeshComponent* KartMesh;
-	// Minimum turning radius -- 10 metros.
 	UPROPERTY(EditAnywhere)
-		float MinTurningRadius = 10.0f;
+		UKartMoveComponent* KartMoveComp;
 
 private:
-
-	uint32 Mass = 1000;
-	UPROPERTY(Replicated)
-		FVector Velocity;
- 	
- 	float Throttle;
-	// 10000 / 1000 = 10 metros por segundo.
-	uint32 MaxDrivingForce = 10000; 
-	float SteeringThrow;
-	//DragCoefficient is indeed unitless! 
-	// 0.3f - 0.5f is generally good to use. 
-	//0.3f - Tanks, 0.5f - Automobiles
-	float DragCoefficient = 0.5f;
-	float RollingResistanceCoefficient = 0.015f;
-	//The DragArea that is (cm^2). Higher means more drag
-	float DragArea = 20000.0f;
-
-
-
-	void CalculateTranslation(float DeltaTime);
-	void CalculateRotation(float DeltaTime, float newSteeringThrow);
-	
-	TArray<FKartMove> UnacknowledgeMoves;
-	FKartMove CreateMoveAction(float DeltaTime);
-	void ClearMoveAction(FKartMove LastMove);
-	void SimulateMove(const FKartMove& newMove);
-	FVector GetAirResistance();
-	FVector GetRollingResistance();
 
 	// network stuff	
 
@@ -105,5 +64,5 @@ public:
 
 	// network RPC
 	UFUNCTION(Server, Reliable, WithValidation)
-		void Server_SendKartMove(FKartMove newMove);
+		void Server_SendKartMove(FKartMovement newMove);
 };

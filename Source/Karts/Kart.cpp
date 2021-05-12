@@ -8,6 +8,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "DrawDebugHelpers.h"
 #include "GameFrameWork/GameState.h"
+
 #include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
 
@@ -27,6 +28,7 @@ AKart::AKart()
 	SpringArm->SetupAttachment(BoxCollision);
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
+	KartMoveComp = CreateDefaultSubobject<UKartMoveComponent>(TEXT("KartMoveComp"));
 	
 	bReplicates = true;
 }
@@ -51,12 +53,12 @@ void AKart::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 
 void AKart::MoveForward(float Val)
 {
-	Throttle = Val;
+	KartMoveComp->SetThrottle(Val);
 }
 
 void AKart::MoveRight(float Val)
 {
-	SteeringThrow = Val;
+	KartMoveComp->SetSteeringThrow(Val);
 }
 
 // Called when the game starts or when spawned
@@ -91,24 +93,24 @@ FString GetRoleName(ENetRole newRole)
 void AKart::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (!KartMoveComp) { return; }
 	if(GetLocalRole() == ROLE_AutonomousProxy)
 	{
-		FKartMove newMove = CreateMoveAction(DeltaTime);
-		SimulateMove(newMove);
-		UnacknowledgeMoves.Add(newMove);
-		UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), UnacknowledgeMoves.Num());
+		FKartMovement newMove = KartMoveComp->CreateMoveAction(DeltaTime);
+		KartMoveComp->SimulateMove(newMove);
+		KartMoveComp->AddToUnacknowledgeMoves(newMove);	
 		
 		Server_SendKartMove(newMove);
 	}
 	// WE ARE THE SERVER AND IN CONTROL OF THE PAWN
 	if(IsLocallyControlled())
 	{
-		FKartMove newMove = CreateMoveAction(DeltaTime);
+		FKartMovement newMove = KartMoveComp->CreateMoveAction(DeltaTime);
 		Server_SendKartMove(newMove);
 	}
 	if(GetLocalRole() == ROLE_SimulatedProxy)
 	{
-		SimulateMove(ServerState.LastMove);
+		KartMoveComp->SimulateMove(ServerState.LastMove);
 	}
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
 }
@@ -116,105 +118,31 @@ void AKart::Tick(float DeltaTime)
 
 void AKart::OnRep_ServerState()
 {
-	SetActorTransform(ServerState.Transform);
-	Velocity = ServerState.Velocity;
-	ClearMoveAction(ServerState.LastMove);
-	for(const FKartMove& move : UnacknowledgeMoves)
+	if (KartMoveComp)
 	{
-		SimulateMove(move);
-	}
-}
-
-// move to move component. 
-void AKart::CalculateTranslation(float DeltaTime)
-{
-	FVector Translation = Velocity * 100 * DeltaTime;
-	
-	FHitResult BlockResult;
-	AddActorWorldOffset(Translation, true,&BlockResult);
-
-	if(BlockResult.bBlockingHit)
-	{
-		Velocity = FVector(0.0);
-	}
-}
-
-// move to move component. 
-// component : in float steering Val, float throttle val. apawn owner 
-void AKart::CalculateRotation(float DeltaTime,float newSteeringThrow)
-{
-	float DeltaLocation = FVector::DotProduct(GetActorForwardVector(), Velocity) * DeltaTime;
- 	if(Velocity.Size() > 25)
- 	{
- 		MinTurningRadius = FMath::FInterpTo(10, 100, DeltaTime, 1.0f);
- 	}
-	
-	float RotationAngle = DeltaLocation / MinTurningRadius * newSteeringThrow;
-	FQuat RotationDelta(GetActorUpVector(),RotationAngle);
-	Velocity = RotationDelta.RotateVector(Velocity);
-	AddActorWorldRotation(RotationDelta);
-}
-
-FKartMove AKart::CreateMoveAction(float DeltaTime)
-{
-	FKartMove KartMove;
-	KartMove.DeltaTime = DeltaTime;
-	KartMove.Throttle = Throttle;
-	KartMove.SteeringThrow = SteeringThrow;
-	KartMove.Time = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();	
-	return KartMove;
-}
-
-void AKart::ClearMoveAction(FKartMove LastMove)
-{
-	TArray<FKartMove> TempMoves;
-	for(const FKartMove& move : UnacknowledgeMoves)
-	{
-		if(move.Time > LastMove.Time)
+		SetActorTransform(ServerState.Transform);
+		KartMoveComp->GetVelocity() = ServerState.Velocity;
+		KartMoveComp->ClearMoveAction(ServerState.LastMove);
+		for(const FKartMovement& move : KartMoveComp->GetUnacknowledgeMoves())
 		{
-			TempMoves.Add(move);
+			KartMoveComp->SimulateMove(move);
 		}
 	}
-	UnacknowledgeMoves = TempMoves;
-}
 
-// move to move component. 
-void AKart::SimulateMove(const FKartMove& newMove)
-{
-	FVector Force = (GetActorForwardVector() * MaxDrivingForce * newMove.Throttle);
-	Force += GetAirResistance();
-	Force += GetRollingResistance();
-	// Accelaration = DeltaVelocity / DeltaTime
-	FVector Accelaration = Force / Mass;
-	// Velocity = DeltaLocation / DeltaTime
-	Velocity = Velocity + Accelaration * newMove.DeltaTime;
-	CalculateRotation(newMove.DeltaTime,newMove.SteeringThrow);
-	CalculateTranslation(newMove.DeltaTime);
-}
-// move to move component. 
-FVector AKart::GetAirResistance()
-{
-	return -Velocity.GetSafeNormal() * Velocity.SizeSquared() * DragCoefficient;
-}
-// move to move component. 
-FVector AKart::GetRollingResistance()
-{
-	float Gravity = GetWorld()->GetDefaultGravityZ() / 100;
-	float NormalForce = Mass / Gravity;
-	return -Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
 }
 
 // RPC
 
-void AKart::Server_SendKartMove_Implementation(FKartMove newMove)
+void AKart::Server_SendKartMove_Implementation(FKartMovement newMove)
 {
-	SimulateMove(newMove);
+	if (!KartMoveComp) { return; }
+	KartMoveComp->SimulateMove(newMove);
 	ServerState.LastMove = newMove;
 	ServerState.Transform = GetActorTransform();
-	ServerState.Velocity = Velocity;
+	ServerState.Velocity = KartMoveComp->GetVelocity();
 }
 
-bool AKart::Server_SendKartMove_Validate(FKartMove newMove)
+bool AKart::Server_SendKartMove_Validate(FKartMovement newMove)
 {
 	return true;
 }

@@ -61,26 +61,25 @@ private:
 	uint32 Mass = 1000;
 	//UPROPERTY(Replicated)
 		FVector Velocity;
-	TArray<FKartMovement> UnacknowledgeMoves;
+	//TArray<FKartMovement> UnacknowledgeMoves;
 	float Throttle;
 	float SteeringThrow;
 	// 10000 / 1000 = 10 metros por segundo.
 
-public:
+	FKartMovement LastMove;
+
+private:
 	FVector GetAirResistance();
 	FVector GetRollingResistance();
 	void CalculateTranslation(float DeltaTime);
 	void CalculateRotation(float DeltaTime, float newSteeringThrow);
-	
-	FKartMovement CreateMoveAction(float DeltaTime);
-	void ClearMoveAction(FKartMovement LastMove);
-	void SimulateMove(const FKartMovement& newMove);
 
 public:
-	FVector GetVelocity() const { return Velocity; }
-	void  SetVelocity(FVector newVelocity) { Velocity = newVelocity; }
-	void AddToUnacknowledgeMoves(FKartMovement newMove);	
-	TArray<FKartMovement> GetUnacknowledgeMoves() { return UnacknowledgeMoves; }
-	void SetThrottle(float Val){ Throttle = Val; }
-	void SetSteeringThrow(float Val) { SteeringThrow = Val; }
+	void SimulateMove(const FKartMovement& newMove);
+	FKartMovement GetLastMove() { return LastMove; };
+	FVector GetVelocity() const { return Velocity; };
+	void SetVelocity(FVector newVelocity) { Velocity = newVelocity; };
+	void SetThrottle(float Val) { Throttle = Val; };
+	void SetSteeringThrow(float Val) { SteeringThrow = Val; };
+	FKartMovement CreateUnacknowledgeMove(float DeltaTime);
 };

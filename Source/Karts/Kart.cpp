@@ -7,10 +7,8 @@
 #include "Engine/World.h"
 #include "Math/UnrealMathUtility.h"
 #include "DrawDebugHelpers.h"
-#include "GameFrameWork/GameState.h"
-
 #include "Camera/CameraComponent.h"
-#include "Net/UnrealNetwork.h"
+
 
 // Sets default values
 AKart::AKart()
@@ -29,15 +27,10 @@ AKart::AKart()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
 	KartMoveComp = CreateDefaultSubobject<UKartMoveComponent>(TEXT("KartMoveComp"));
-	
-	bReplicates = true;
-}
+	MoveReplicatorComp = CreateDefaultSubobject<UMoveReplicatorComponent>(TEXT("MoveReplicatorComp"));
+	MoveReplicatorComp->SetIsReplicated(true);
 
-void AKart::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	//DOREPLIFETIME(AKart, Velocity);
-	DOREPLIFETIME(AKart, ServerState);
+	bReplicates = true;
 }
 
 // Called to bind functionality to input
@@ -92,57 +85,6 @@ FString GetRoleName(ENetRole newRole)
 // Called every frame
 void AKart::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
-	if (!KartMoveComp) { return; }
-	if(GetLocalRole() == ROLE_AutonomousProxy)
-	{
-		FKartMovement newMove = KartMoveComp->CreateMoveAction(DeltaTime);
-		KartMoveComp->SimulateMove(newMove);
-		KartMoveComp->AddToUnacknowledgeMoves(newMove);	
-		
-		Server_SendKartMove(newMove);
-	}
-	// WE ARE THE SERVER AND IN CONTROL OF THE PAWN
-	if(IsLocallyControlled())
-	{
-		FKartMovement newMove = KartMoveComp->CreateMoveAction(DeltaTime);
-		Server_SendKartMove(newMove);
-	}
-	if(GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		KartMoveComp->SimulateMove(ServerState.LastMove);
-	}
+	Super::Tick(DeltaTime);	
 	DrawDebugString(GetWorld(), FVector(0.0, 0.0, 100.0f), GetRoleName(GetLocalRole()),this, FColor::Green, DeltaTime, false);
-}
-
-
-void AKart::OnRep_ServerState()
-{
-	if (KartMoveComp)
-	{
-		SetActorTransform(ServerState.Transform);
-		KartMoveComp->GetVelocity() = ServerState.Velocity;
-		KartMoveComp->ClearMoveAction(ServerState.LastMove);
-		for(const FKartMovement& move : KartMoveComp->GetUnacknowledgeMoves())
-		{
-			KartMoveComp->SimulateMove(move);
-		}
-	}
-
-}
-
-// RPC
-
-void AKart::Server_SendKartMove_Implementation(FKartMovement newMove)
-{
-	if (!KartMoveComp) { return; }
-	KartMoveComp->SimulateMove(newMove);
-	ServerState.LastMove = newMove;
-	ServerState.Transform = GetActorTransform();
-	ServerState.Velocity = KartMoveComp->GetVelocity();
-}
-
-bool AKart::Server_SendKartMove_Validate(FKartMovement newMove)
-{
-	return true;
 }

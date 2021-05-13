@@ -29,8 +29,11 @@ void UKartMoveComponent::BeginPlay()
 void UKartMoveComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
+	if(GetOwnerRole() == ROLE_AutonomousProxy || GetOwner()->GetRemoteRole() == ROLE_SimulatedProxy)
+	{
+		LastMove = CreateUnacknowledgeMove(DeltaTime);
+		SimulateMove(LastMove);
+	}
 }
 
 FVector UKartMoveComponent::GetAirResistance()
@@ -71,7 +74,7 @@ void UKartMoveComponent::CalculateRotation(float DeltaTime, float newSteeringThr
 	GetOwner()->AddActorWorldRotation(RotationDelta);
 }
 
-FKartMovement UKartMoveComponent::CreateMoveAction(float DeltaTime)
+FKartMovement UKartMoveComponent::CreateUnacknowledgeMove(float DeltaTime)
 {
 	FKartMovement KartMove;
 	KartMove.DeltaTime = DeltaTime;
@@ -79,19 +82,6 @@ FKartMovement UKartMoveComponent::CreateMoveAction(float DeltaTime)
 	KartMove.SteeringThrow = SteeringThrow;
 	KartMove.Time = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 	return KartMove;
-}
-
-void UKartMoveComponent::ClearMoveAction(FKartMovement LastMove)
-{
-	TArray<FKartMovement> TempMoves;
-	for (const FKartMovement& move : UnacknowledgeMoves)
-	{
-		if (move.Time > LastMove.Time)
-		{
-			TempMoves.Add(move);
-		}
-	}
-	UnacknowledgeMoves = TempMoves;
 }
 
 void UKartMoveComponent::SimulateMove(const FKartMovement& newMove)
@@ -106,10 +96,3 @@ void UKartMoveComponent::SimulateMove(const FKartMovement& newMove)
 	CalculateRotation(newMove.DeltaTime, newMove.SteeringThrow);
 	CalculateTranslation(newMove.DeltaTime);
 }
-
-void UKartMoveComponent::AddToUnacknowledgeMoves(FKartMovement newMove)
-{
-	UnacknowledgeMoves.Add(newMove);
-	UE_LOG(LogTemp, Warning, TEXT("Move queue %d"), UnacknowledgeMoves.Num());
-}
-

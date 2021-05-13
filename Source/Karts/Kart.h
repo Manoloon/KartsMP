@@ -4,20 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Public/MoveReplicatorComponent.h"
 #include "Public/KartMoveComponent.h"
 #include "Kart.generated.h"
-
-USTRUCT()
-struct FServerState
-{
-	GENERATED_USTRUCT_BODY()
-	UPROPERTY()
-		FVector Velocity;
-	UPROPERTY()
-		FTransform Transform;
-	UPROPERTY()
-		FKartMovement LastMove;
-};
 
 UCLASS()
 class KARTS_API AKart : public APawn
@@ -40,18 +29,17 @@ protected:
 		class UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
 		class USkeletalMeshComponent* KartMesh;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(VisibleAnywhere)
 		UKartMoveComponent* KartMoveComp;
+	UPROPERTY(VisibleAnywhere)
+		UMoveReplicatorComponent* MoveReplicatorComp;
 
 private:
 
 	// network stuff	
 
-	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
-		FServerState ServerState;
 
-	UFUNCTION()
-		void OnRep_ServerState();
+
 
 public:	
 	// Called every frame
@@ -62,7 +50,4 @@ public:
 	void MoveForward(float Val);
 	void MoveRight(float Val);
 
-	// network RPC
-	UFUNCTION(Server, Reliable, WithValidation)
-		void Server_SendKartMove(FKartMovement newMove);
 };

@@ -2,6 +2,10 @@
 
 #include "MoveReplicatorComponent.h"
 #include "KartMoveComponent.h"
+#include "Math/UnrealMathUtility.h"
+#include "Math/Quat.h"
+#include "GameFrameWork/GameState.h"
+#include "Gameframework/Actor.h"
 #include "Net/UnrealNetwork.h"
 
 // Sets default values for this component's properties
@@ -14,7 +18,6 @@ UMoveReplicatorComponent::UMoveReplicatorComponent()
 	// ...
 }
 
-
 // Called when the game starts
 void UMoveReplicatorComponent::BeginPlay()
 {
@@ -22,7 +25,6 @@ void UMoveReplicatorComponent::BeginPlay()
 
 	KartMoveComponent = GetOwner()->FindComponentByClass<UKartMoveComponent>();	
 }
-
 
 // Called every frame
 void UMoveReplicatorComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -45,25 +47,80 @@ void UMoveReplicatorComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	}
 	if(GetOwnerRole() == ROLE_SimulatedProxy)
 	{
-		KartMoveComponent->SimulateMove(ServerState.LastMove);
+		ClientTick(DeltaTime);
 	}
 }
 
+void UMoveReplicatorComponent::ClientTick(float DeltaTime)
+{
+	ClientTimeSinceUpdate += DeltaTime;
+	if (ClientTimeBetweenLastUpdate < KINDA_SMALL_NUMBER) { return; }
+	
+	float LerpRatio = ClientTimeSinceUpdate / ClientTimeBetweenLastUpdate;
+	
+	Spline.ClientStartLocation = ClientStartTransform.GetLocation();
+	Spline.ClientTargetLocation = ServerState.Transform.GetLocation();
+	Spline.ClientStartRotation = ClientStartTransform.GetRotation();
+	Spline.ClientTargetRotation = ServerState.Transform.GetRotation();
+
+	Spline.StartDerivative = ClientStartVelocity * GetVelocityToDerivative();
+	Spline.TargetDerivative = ServerState.Velocity * GetVelocityToDerivative();
+
+	FVector ClientNextVelocity = Spline.InterpolateDerivative(LerpRatio) / GetVelocityToDerivative();
+	if (KartMeshOffsetRootComp)
+	{
+		KartMeshOffsetRootComp->SetWorldLocation(Spline.InterpolateLocation(LerpRatio));
+		KartMeshOffsetRootComp->SetWorldRotation(Spline.InterpolateRotation(LerpRatio));
+	}
+	if (KartMoveComponent)
+	{
+		KartMoveComponent->SetVelocity(ClientNextVelocity);
+	}
+}
 // RPC
 
 void UMoveReplicatorComponent::Server_SendKartMove_Implementation(FKartMovement newMove)
 {
 	if (KartMoveComponent == nullptr) { return; }
 	KartMoveComponent->SimulateMove(newMove);
+	ClientSimulatedTime += newMove.Time;
 	UpdateServerState(newMove);
 }
 
 bool UMoveReplicatorComponent::Server_SendKartMove_Validate(FKartMovement newMove)
 {
+	float ProposedTime = ClientSimulatedTime + newMove.Time;
+	bool ClientNotRunningAhead = ProposedTime < GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
+	if(!ClientNotRunningAhead)
+	{
+		UE_LOG(LogTemp, Error, TEXT("CHEAT : Client time way ahead of server"));
+		return false;
+	}
+	if(!newMove.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("CHEAT : Client have throttle And/Or steeringthrow wrong"));
+		return false;
+	}
+	// previene de cheat : multiplicar el throttle o el steeringThrow. 
 	return true;
 }
 
 void UMoveReplicatorComponent::OnRep_ServerState()
+{
+	switch (GetOwnerRole())
+	{
+	case ROLE_AutonomousProxy:
+		AutonomousProxy_OnRep_ServerState();
+		break;
+	case ROLE_SimulatedProxy:
+		SimulatedProxy_OnRep_ServerState();
+		break;
+	default:
+		break;
+	}
+}
+
+void UMoveReplicatorComponent::AutonomousProxy_OnRep_ServerState()
 {
 	if (KartMoveComponent == nullptr) { return; }
 
@@ -76,6 +133,22 @@ void UMoveReplicatorComponent::OnRep_ServerState()
 	{
 		KartMoveComponent->SimulateMove(move);
 	}
+}
+
+void UMoveReplicatorComponent::SimulatedProxy_OnRep_ServerState()
+{
+	if (KartMoveComponent == nullptr) { return; }
+	
+	ClientTimeBetweenLastUpdate = ClientTimeSinceUpdate;
+	ClientTimeSinceUpdate = 0;
+	if(KartMeshOffsetRootComp)
+	{
+		ClientStartTransform = KartMeshOffsetRootComp->GetComponentTransform();
+	}
+
+	ClientStartVelocity = KartMoveComponent->GetVelocity();
+
+	GetOwner()->SetActorTransform(ServerState.Transform);
 }
 
 void UMoveReplicatorComponent::ClearUnacknowledgeMoves(FKartMovement LastMove)
@@ -96,10 +169,16 @@ void UMoveReplicatorComponent::UpdateServerState(const FKartMovement& newLastMov
 	if (KartMoveComponent)
 	{
 		ServerState.LastMove = newLastMove;
-		ServerState.Transform = GetOwner()->GetActorTransform();
+		if(KartMeshOffsetRootComp)
+		{
+			ServerState.Transform = KartMeshOffsetRootComp->GetComponentTransform();
+		}
+		
 		ServerState.Velocity = KartMoveComponent->GetVelocity();
 	}
 }
+
+
 
 void UMoveReplicatorComponent::GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const
 {

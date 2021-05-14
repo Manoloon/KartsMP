@@ -30,6 +30,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 		class USkeletalMeshComponent* KartMesh;
 	UPROPERTY(VisibleAnywhere)
+		class USceneComponent* MeshOffsetRootComp;
+	UPROPERTY(VisibleAnywhere)
 		UKartMoveComponent* KartMoveComp;
 	UPROPERTY(VisibleAnywhere)
 		UMoveReplicatorComponent* MoveReplicatorComp;

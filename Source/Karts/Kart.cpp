@@ -19,11 +19,13 @@ AKart::AKart()
 	BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
 	BoxCollision->SetBoxExtent(FVector(220.0f,90.0f,40.0f));
 	RootComponent = BoxCollision;
+	MeshOffsetRootComp = CreateDefaultSubobject<USceneComponent>(TEXT("MeshOffsetRootComp"));
+	MeshOffsetRootComp->SetupAttachment(BoxCollision);
 	KartMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("KartMesh"));
 	KartMesh->SetRelativeLocation(FVector(0.0f, 0.0f, -40.0f));
-	KartMesh->SetupAttachment(BoxCollision);
+	KartMesh->SetupAttachment(MeshOffsetRootComp);
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
-	SpringArm->SetupAttachment(BoxCollision);
+	SpringArm->SetupAttachment(KartMesh);
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
 	KartMoveComp = CreateDefaultSubobject<UKartMoveComponent>(TEXT("KartMoveComp"));
@@ -58,7 +60,11 @@ void AKart::MoveRight(float Val)
 void AKart::BeginPlay()
 {
 	Super::BeginPlay();	
-
+	SetReplicateMovement(false);
+	if(MoveReplicatorComp)
+	{
+		MoveReplicatorComp->SetMeshOffsetComp(MeshOffsetRootComp);
+	}
 	if (HasAuthority())
 	{
 		NetUpdateFrequency = 1;
